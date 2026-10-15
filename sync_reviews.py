@@ -269,6 +269,7 @@ def main():
         log(f"{cfg['label']}: {len(existing)} reviews already logged, {len(props)} linked properties")
 
     stats = {"created": 0, "flagged": 0, "responded": 0, "skipped": 0}
+    changes = []
     for prop in hospitable_paginate("/properties", {}):
         country = ((prop.get("address") or {}).get("country_code") or "").upper()
         target = targets.get(country)
@@ -277,6 +278,7 @@ def main():
             target = next((t for t in targets.values() if prop["id"] in t["props"]), None)
         if not target:
             log(f"! Skipping {prop.get('name')} ({prop['id']}): country '{country}' has no board")
+            changes.append(f"SKIPPED property {prop.get('name')}: country '{country}' has no board")
             stats["skipped"] += 1
             continue
 
@@ -285,6 +287,7 @@ def main():
         if not prop_item:
             log(f"! {prop_name} ({prop['id']}) is not on {target['label']} Properties Master; "
                 "reviews will be logged without a Property Link")
+            changes.append(f"UNLINKED property {prop_name}: not on {target['label']} Properties Master")
 
         for review in hospitable_paginate(f"/properties/{prop['id']}/reviews", {"include": "guest"}):
             cols = target["cols"]
@@ -292,6 +295,7 @@ def main():
             if known:
                 if not known["responded"] and review.get("responded_at"):
                     mark_responded(target["reviews"], known["item_id"], cols["Host Responded"])
+                    changes.append(f"RESPONDED {target['label']} | {prop_name} | {reviewer_name(review)}")
                     known["responded"] = True
                     stats["responded"] += 1
                 continue
@@ -302,12 +306,20 @@ def main():
             stats["created"] += 1
             flagged = needs_flag(review)
             stats["flagged"] += flagged
-            log(f"+ {target['label']} | {prop_name} | {reviewer_name(review)} | "
-                f"{overall_rating(review)}★ | {review.get('reviewed_at', '')[:10]}"
-                + ("  [FLAGGED]" if flagged else ""))
+            line = (f"{target['label']} | {prop_name} | {reviewer_name(review)} | "
+                    f"{overall_rating(review)}★ | {review.get('reviewed_at', '')[:10]}"
+                    + ("  [FLAGGED]" if flagged else ""))
+            log(f"+ {line}")
+            changes.append(f"NEW {line}")
 
     log(f"\nDone. New reviews: {stats['created']} ({stats['flagged']} flagged), "
         f"marked responded: {stats['responded']}, properties skipped: {stats['skipped']}")
+    if os.environ.get("GITHUB_ACTIONS"):
+        # Annotation shows on the run page and is readable through the checks API.
+        body = (f"New: {stats['created']} ({stats['flagged']} flagged), responded: {stats['responded']}, "
+                f"skipped properties: {stats['skipped']}\n" + "\n".join(changes[:400]))
+        body = body.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        log(f"::notice title=Review sync{' (dry run)' if DRY_RUN else ''}::{body}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as f:
