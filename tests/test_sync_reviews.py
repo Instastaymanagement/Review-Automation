@@ -37,6 +37,15 @@ class FlagTests(unittest.TestCase):
     def test_low_category_flagged_even_with_5_overall(self):
         self.assertTrue(s.needs_flag(review(categories={"cleanliness": 4})))
 
+    def test_missing_overall_rating_not_flagged(self):
+        r = review(overall=0)
+        self.assertIsNone(s.overall_rating(r))
+        self.assertFalse(s.needs_flag(r))
+        self.assertNotIn("col_Overall Rating", s.build_column_values(r, "P", None, COLS))
+
+    def test_missing_overall_but_low_category_flagged(self):
+        self.assertTrue(s.needs_flag(review(overall=0, categories={"location": 3})))
+
     def test_unrated_categories_ignored(self):
         # facilities/staff/services come back as 0 when not rated
         self.assertEqual(set(s.category_ratings(review())), set(s.CATEGORY_COLUMNS.values()))

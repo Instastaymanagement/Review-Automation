@@ -119,7 +119,9 @@ def category_ratings(review):
 
 
 def overall_rating(review):
-    return (review.get("public") or {}).get("rating")
+    """Overall stars, or None when the guest left no star rating (Hospitable sends 0)."""
+    rating = (review.get("public") or {}).get("rating")
+    return rating or None
 
 
 def needs_flag(review):
@@ -307,7 +309,7 @@ def main():
             flagged = needs_flag(review)
             stats["flagged"] += flagged
             line = (f"{target['label']} | {prop_name} | {reviewer_name(review)} | "
-                    f"{overall_rating(review)}★ | {review.get('reviewed_at', '')[:10]}"
+                    f"{overall_rating(review) or 'no'}★ | {review.get('reviewed_at', '')[:10]}"
                     + ("  [FLAGGED]" if flagged else ""))
             log(f"+ {line}")
             changes.append(f"NEW {line}")
